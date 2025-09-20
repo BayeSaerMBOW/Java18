@@ -7,7 +7,7 @@ pipeline {
 
   options {
     timestamps()
-    // ansiColor('xterm') //activer uniquement si le plugin AnsiColor est installé
+    // ansiColor('xterm') // décommente si le plugin AnsiColor est installé
   }
 
   stages {
@@ -19,7 +19,7 @@ pipeline {
     stage('Set Version') {
       steps {
         script {
-          // Récupère date et SHA via deux commandes séparées (évite tout $() dans une chaîne Groovy)
+          // Fabrique une version: date + short SHA
           def ts  = sh(script: 'date +%Y%m%d-%H%M%S',        returnStdout: true).trim()
           def sha = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
           env.VERSION = "${ts}-${sha}"
@@ -36,21 +36,19 @@ pipeline {
 
     stage('Docker Build') {
       steps {
-        sh """
-          docker build -t ${DOCKER_IMAGE}:${env.VERSION} -t ${DOCKER_IMAGE}:latest .
-        """
+        sh "docker build -t ${DOCKER_IMAGE}:${env.VERSION} -t ${DOCKER_IMAGE}:latest ."
       }
     }
 
     stage('Docker Login & Push') {
       steps {
         withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-          // 1) login : garder un bloc en guillemets simples pour laisser $DOCKER_* au shell
+          // login : garder des quotes simples pour conserver $DOCKER_*
           sh '''
             set -e
             echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
           '''
-          // 2) push : ici on laisse Groovy interpoler DOCKER_IMAGE / env.VERSION
+          // push avec interpolation Groovy pour DOCKER_IMAGE / VERSION
           sh """
             set -e
             docker push ${DOCKER_IMAGE}:${env.VERSION}
@@ -61,42 +59,39 @@ pipeline {
       }
     }
 
+    stage('Deploy on Render') {
+      steps {
+        withCredentials([
+          string(credentialsId: 'render-hook',    variable: 'RENDER_DEPLOY_HOOK'),
+          string(credentialsId: 'render-app-url', variable: 'APP_URL')
+        ]) {
+          // 1) Déclenche le déploiement Render (avec petit retry)
+          sh 'curl -fsSL -X POST "$RENDER_DEPLOY_HOOK" || (sleep 5 && curl -fsSL -X POST "$RENDER_DEPLOY_HOOK")'
 
-  }
-
-      stage('Deploy on Render') {
-        steps {
-          withCredentials([
-            string(credentialsId: 'render-hook',    variable: 'RENDER_DEPLOY_HOOK'),
-            string(credentialsId: 'render-app-url', variable: 'APP_URL')
-          ]) {
-            // 1) Déclencher le déploiement Render
-            sh 'curl -fsSL -X POST "$RENDER_DEPLOY_HOOK" || (sleep 5 && curl -fsSL -X POST "$RENDER_DEPLOY_HOOK")'
-
-            // 2) Attendre que l’app soit UP (max ~5 min)
-            sh '''
-              set -e
-              echo "⏳ Attente que l'app démarre sur $APP_URL ..."
-              for i in $(seq 1 60); do
-                # utilise /actuator/health si tu l’as, sinon la racine /
-                if curl -fsS --max-time 5 "$APP_URL/actuator/health" >/dev/null 2>&1 || \
-                   curl -fsS --max-time 5 "$APP_URL"             >/dev/null 2>&1; then
-                  echo "✅ App UP : $APP_URL"
-                  exit 0
-                fi
-                sleep 5
-              done
-              echo "❌ App indisponible après attente : $APP_URL"
-              exit 1
-            '''
-          }
+          // 2) Attend que l’app réponde (max ~5 min)
+          sh '''
+            set -e
+            echo "⏳ Attente que l'app démarre sur $APP_URL ..."
+            for i in $(seq 1 60); do
+              # /actuator/health si dispo, sinon la racine /
+              if curl -fsS --max-time 5 "$APP_URL/actuator/health" >/dev/null 2>&1 || \
+                 curl -fsS --max-time 5 "$APP_URL"               >/dev/null 2>&1; then
+                echo "✅ App UP : $APP_URL"
+                exit 0
+              fi
+              sleep 5
+            done
+            echo "❌ App indisponible après attente : $APP_URL"
+            exit 1
+          '''
         }
       }
     }
 
+  } // <-- fin du bloc stages
 
   post {
-    success { echo "✅ OK — Image: ${DOCKER_IMAGE}:${env.VERSION} — Déploiement Render déclenché." }
+    success { echo "✅ OK — Image: ${DOCKER_IMAGE}:${env.VERSION} — Déploiement Render déclenché + app UP." }
     failure { echo "❌ Échec du pipeline." }
   }
 }
