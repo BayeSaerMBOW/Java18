@@ -88,7 +88,7 @@ pipeline {
       }
     }
 
-  } // <-- fin du bloc stages
+  }
 
   post {
     success { echo "✅ OK — Image: ${DOCKER_IMAGE}:${env.VERSION} — Déploiement Render déclenché + app UP." }
