@@ -64,6 +64,37 @@ pipeline {
 
   }
 
+      stage('Deploy on Render') {
+        steps {
+          withCredentials([
+            string(credentialsId: 'render-hook',    variable: 'RENDER_DEPLOY_HOOK'),
+            string(credentialsId: 'render-app-url', variable: 'APP_URL')
+          ]) {
+            // 1) Déclencher le déploiement Render
+            sh 'curl -fsSL -X POST "$RENDER_DEPLOY_HOOK" || (sleep 5 && curl -fsSL -X POST "$RENDER_DEPLOY_HOOK")'
+
+            // 2) Attendre que l’app soit UP (max ~5 min)
+            sh '''
+              set -e
+              echo "⏳ Attente que l'app démarre sur $APP_URL ..."
+              for i in $(seq 1 60); do
+                # utilise /actuator/health si tu l’as, sinon la racine /
+                if curl -fsS --max-time 5 "$APP_URL/actuator/health" >/dev/null 2>&1 || \
+                   curl -fsS --max-time 5 "$APP_URL"             >/dev/null 2>&1; then
+                  echo "✅ App UP : $APP_URL"
+                  exit 0
+                fi
+                sleep 5
+              done
+              echo "❌ App indisponible après attente : $APP_URL"
+              exit 1
+            '''
+          }
+        }
+      }
+    }
+
+
   post {
     success { echo "✅ OK — Image: ${DOCKER_IMAGE}:${env.VERSION} — Déploiement Render déclenché." }
     failure { echo "❌ Échec du pipeline." }
