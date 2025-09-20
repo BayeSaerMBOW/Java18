@@ -71,7 +71,7 @@ pipeline {
           // 2) Attend que l’app réponde (max ~5 min)
           sh '''
             set -e
-            echo "⏳ Attente que l'app démarre sur $APP_URL ..."
+            echo "Attente que l'app démarre sur $APP_URL ..."
             for i in $(seq 1 60); do
               # /actuator/health si dispo, sinon la racine /
               if curl -fsS --max-time 5 "$APP_URL/actuator/health" >/dev/null 2>&1 || \
@@ -91,7 +91,7 @@ pipeline {
   }
 
   post {
-    success { echo "✅ OK — Image: ${DOCKER_IMAGE}:${env.VERSION} — Déploiement Render déclenché + app UP." }
-    failure { echo "❌ Échec du pipeline." }
+    success { echo " OK — Image: ${DOCKER_IMAGE}:${env.VERSION} — Déploiement Render déclenché + app UP." }
+    failure { echo "Échec du pipeline." }
   }
 }
