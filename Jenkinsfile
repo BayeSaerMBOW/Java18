@@ -7,7 +7,7 @@ pipeline {
 
   options {
     timestamps()
-    // ansiColor('xterm') // ← à réactiver uniquement si le plugin AnsiColor est installé
+    // ansiColor('xterm') //activer uniquement si le plugin AnsiColor est installé
   }
 
   stages {
@@ -63,7 +63,7 @@ pipeline {
 
 
   }
-//sfdsdddsdsdsSSQSQSSQSQ
+//sfdsdddsdsdsSSQSQS
   post {
     success { echo "✅ OK — Image: ${DOCKER_IMAGE}:${env.VERSION} — Déploiement Render déclenché." }
     failure { echo "❌ Échec du pipeline." }
